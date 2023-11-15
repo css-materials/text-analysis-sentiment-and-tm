@@ -7,7 +7,7 @@
 # 4. SENTIMENT ANALYSIS EXAMPLE USING AFINN DICTIONARY
 
 # This example is not in the book "Text Mining with R"
-# For other examples see the book, especially chapter 2 and the case-study chapters
+# This example is heavily commented for teaching purposes
 
 
 ### 1. LOAD/INSTALL LIBRARIES 
