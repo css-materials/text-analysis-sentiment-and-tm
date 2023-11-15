@@ -1,0 +1,23 @@
+---
+title: "Chapter 2 Sentiment analsysis with tidy data tutorial"
+output: github_document
+---
+
+This tutorial works through the code of [Chapter 2](https://www.tidytextmining.com/sentiment)
+
+For further practice, work through the other example in your repo for today (Harry Potter)
+
+
+LOAD LIBRARIES AND DATA
+
+Load libraries 
+```{r}
+library(tidyverse)
+library(tidytext)
+```
+
+Load data
+```{r}
+
+```
+
