@@ -14,10 +14,96 @@ Load libraries
 ```{r}
 library(tidyverse)
 library(tidytext)
+library(stringr)
+library(janeaustenr)
 ```
 
-Load data
+
+SIMPLE EXAMPLE USING EMMA FROM JANE AUSTEN
+
+We follow Chapter 2 and use Jane Austen built in data to perform sentiment analysis. 
+Using tidy data principles, we can set this up using inner join (like stopwords was an anti-join operation). 
+
+First, we perform some data-preprocessing to set up the data: use `unnest_tokens()` to convert the text into tidy text (one word per row), and some extra operations to keep track of which line and chapter of the book each word comes from (not stricktly needed but good to have it!)
 ```{r}
-
+tidy_books <- austen_books() %>%
+  group_by(book) %>%
+  mutate(
+    linenumber = row_number(),
+    chapter = cumsum(str_detect(text, 
+                                regex("^chapter [\\divxlc]", 
+                                      ignore_case = TRUE)))) %>%
+  ungroup() %>%
+  unnest_tokens(word, text)  # choose name word to facilitate inner join operation
 ```
+
+Now the text is ready to perform sentiment analysis. For example, we can use the NRC lexicon and only look at words that express joy
+```{r}
+nrc_joy <- get_sentiments("nrc") %>% 
+  filter(sentiment == "joy")
+```
+
+We then apply this only to the book Emma, to check (and count) the most common joy word in that specific book
+```{r}
+tidy_books %>%
+  filter(book == "Emma") %>%
+  inner_join(nrc_joy) %>%
+  count(word, sort = TRUE)
+```
+
+We can replicate this for all books and change the words of interest!
+
+COMPARING THE THREE LEXICONS
+
+Check the three lexicons/dictionaries available in the `tidytext` package: afinn, bing, nrc
+```{r}
+get_sentiments("afinn")
+```
+
+Use the book Pride and Prejudice to compare the three sentiment lexicons
+```{r}
+pride_prejudice <- tidy_books %>% 
+  filter(book == "Pride & Prejudice")
+```
+
+NB: the AFINN lexicon measures sentiment with a numeric score between -5 and 5, while the other two lexicons categorize words in a binary fashion, either positive or negative. To find a sentiment score in chunks of text throughout the novel, we will need to use a different pattern for the AFINN lexicon than for the other two
+
+First, we define an index to keep track of where we are in the narrative; this index (using integer division with the `%/%` operator) counts up sections of 80 lines of text and helps to keep track of sections of text that span multiple lines. Then we use `count()`, `pivot_wider()`, and `mutate()` to find the net sentiment in each of these sections of text
+
+```{r}
+afinn <- pride_prejudice %>% 
+  inner_join(get_sentiments("afinn")) %>% 
+  group_by(index = linenumber %/% 80) %>% 
+  summarise(sentiment = sum(value)) %>% 
+  mutate(method = "AFINN")
+
+bing_and_nrc <- bind_rows(
+  pride_prejudice %>% 
+    inner_join(get_sentiments("bing")) %>%
+    mutate(method = "Bing et al."),
+  pride_prejudice %>% 
+    inner_join(get_sentiments("nrc") %>% 
+                 filter(sentiment %in% c("positive", 
+                                         "negative"))
+    ) %>%
+    mutate(method = "NRC")) %>%
+  count(method, index = linenumber %/% 80, sentiment) %>%
+  pivot_wider(names_from = sentiment,
+              values_from = n,
+              values_fill = 0) %>% 
+  mutate(sentiment = positive - negative)
+```
+
+The code gives an estimate of the net sentiment (positive - negative) in each chunk of the novel text for each sentiment lexicon. Let’s bind them together and visualize them (see book Chapter 2 for interpretation):
+```{r}
+bind_rows(afinn, 
+          bing_and_nrc) %>%
+  ggplot(aes(index, sentiment, fill = method)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~method, ncol = 1, scales = "free_y")
+```
+
+
+MORE ANALYSES IN CHAPTER 2 AND THE CASE-STUDY CHAPTERS OF THE BOOK
+See also Harry Potter example included in class materials for today!
 
