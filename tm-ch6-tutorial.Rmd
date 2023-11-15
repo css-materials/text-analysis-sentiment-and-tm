@@ -23,9 +23,19 @@ Load data
 data("AssociatedPress")
 ```
 
-The AssociatedPress dataset comes with the package, and consists of 2246 news articles and 10473 distinct words
+The AssociatedPress dataset comes with the `topicmodels` package, and consists of 2246 news articles (documents) and 10473 distinct words (terms)
 ```{r}
 AssociatedPress
+```
+
+Check data type
+```{r}
+class(AssociatedPress)
+```
+
+Inspect data
+```{r}
+View(AssociatedPress)
 ```
 
 
@@ -34,7 +44,7 @@ CONVERT AMONG DATA FORMATS
 We need a document-term matrix as input to run LDA. These data are conveniently already in the right shape, but what if we had these data in a tidy-text format instead?
 See https://www.tidytextmining.com/dtm.html
 
-Use `tidy()` to convert from matrix to tidy text format (one-token-per-document-per-row), which is useful for basic exploratory analyses (see Chapter 1 and 3) and for sentiment analysis with tidy data (Chapter 2).
+Use `tidy()` to convert from matrix to tidy text format (one-token-per-document-per-row), which is useful for exploratory analyses (Chapter 1 and 3) and for sentiment analysis with tidy data (Chapter 2).
 ```{r}
 ap_tidy <- tidy(AssociatedPress)
 ap_tidy
@@ -49,70 +59,89 @@ ap_tidy %>%
 
 RUN LDA
 
-The main function is `LDA()` from `topicmodels`. The user must: 
-* specify `k` (number of topics): to get started, the book picks 2 topics
-* set a seed so that the output of the model is reproducible
+The main function is `LDA()` from `topicmodels`. Type `?LDA()` to learn more. Notice two algorithms are supported to estimate the model: VEM (Variational Expectation-Maximization) and Gibbs. 
+
+At the minimum, the user must pass the data in the correct form, and specify the number of topics `k` (to get started, the book picks 2 topics). Here we also have a control with a so-called "seed" (a random number that ensure reproducible)
 ```{r}
-ap_lda <- LDA(AssociatedPress, k = 2, control = list(seed = 1234))
+ap_lda <- LDA(AssociatedPress, k = 2, 
+              control = list(seed = 1234))
 ap_lda
 ```
 
-As the data size and the number of topics you ask increase, the longest it takes for R to estimate the model.
+Notice it took several seconds to estimate this model. As the data size and the number of topics estimated increase (and also depending on your computer RAM): the longest it takes for R to run the model (up to several minutes).
 
 
 EXPLORE RESULTS
 
-The function `LDA()` returns an object containing the full details of the model.
-We should always check the two probabilities distributins estimated by the model: 
-* beta: per-topic-per-word probabilities
-* gamma: per-document-per-topic probabilities
+The function `LDA()` returns an object containing the full details of the model. 
+We should start by checking the two distributions estimated by the model: 
+* BETA: per-topic-per-word probabilities or distribution of topics by all words in the collection
+* GAMMA: per-document-per-topic probabilities or distribution of topics by all documents in the collection 
 
 First, we extract the per-topic-per-word probabilities "beta”
 ```{r}
 ap_topics <- tidy(ap_lda, matrix = "beta")
 ap_topics
 ```
-For each topic-term we have a probability of being generated from topic 1 and 2
+For each term we have a probability of being generated from topic 1 and 2. For example, the term “aaron” has a 1.68e × 10 at the -12 probability of being generated from topic 1, but a higher probability of being generated from topic 2.
 
-We can find the 10 terms most common within each topic
+We can order the results to find the top terms most likely associated with each topic. The code below uses `group_by()` and `slice_max()` from `dplyr` to return the highest observations in each group (https://dplyr.tidyverse.org/reference/slice.html)
 ```{r}
 ap_top_terms <- ap_topics %>%
   group_by(topic) %>%
-  slice_max(beta, n = 10) %>%    # can also use" top_n(10, beta) 
+  slice_max(beta, n = 20) %>%    # can also use" top_n(10, beta) 
   ungroup() %>%
-  arrange(topic, -beta)
+  arrange(topic)
 ap_top_terms
 ```
 
-We can manipulate and visualize these common terms using `dplyr` and `ggplot2`
+We can then further manipulate and visualize these common terms using `dplyr` and `ggplot2`
 ```{r}
 ap_top_terms %>%
   mutate(term = reorder_within(term, beta, topic)) %>%
   ggplot(aes(beta, term, fill = factor(topic))) +
   geom_col(show.legend = FALSE) +
   facet_wrap(~ topic, scales = "free") +
-  scale_y_reordered()
+  scale_y_reordered() +
+  labs(title = "Most common terms within each topic")
 ```
 
 THINK: 
-Is there evidence that these words cohere into something that can be called a topic?
+Is there evidence that these top words cohere into something that can be called a topic? 
 Or do we need to re-run the model asking for more topics?
+Hypothesis: topic 1 business news and topic 2 political news; notice some common terms like "new" and "people"
+More analyses should be done to fully answer these questions. For example, we could extract terms that have the greatest difference in beta between topic 1 and 2: this will show terms that fully characterize topic 1 but not topic 2 and the other way around (see book for details!)
 
-Second, we extract the per-document-per-topic probabilities "gamma” 
+
+After we are done looking at the "beta" probabilities, we extract the per-document-per-topic probabilities "gamma” 
 ```{r}
 ap_documents <- tidy(ap_lda, matrix = "gamma")
 ap_documents
 ```
 
-Interpretation: 25% of words in document 1 are generated from topic 1, most of these documents are drawn from a mix of topics, but document 6 seems to be drawn almost entirely from topic 2
-
-THINK:
+For each document we have a probability of being generated from topic 1 and 2 (calculate as % of words from that document). For example, 25% of words in document 1 are generated from topic 1. Most of these documents are drawn from a mix of topics, but document 6 seems to be drawn almost entirely from topic 2 since the gamma from topic 1 is almost zero
 
 
-Further manipulate this document-term-matrix to closely inspect most common words in document 6:
+Further manipulate this document-term-matrix to inspect most common words in document 6:
 ```{r}
 tidy(AssociatedPress) %>%
   filter(document == 6) %>%
   arrange(desc(count))
 ```
 
+
+We can order the results like we did before (for the beta probabilities). This time we find the top n documents most likely associated with each topic.
+```{r}
+ap_top_doc <- ap_documents %>%
+  group_by(topic) %>%
+  slice_max(gamma, n = 20) %>%
+  ungroup() %>%
+  arrange(topic)
+ap_top_doc
+```
+
+MORE ANALYSES IN CHAPTER 6 AND THE CASE-STUDY CHAPTERS OF THE BOOK
+
+Many more analyses are possible (see book and plenty of online tutorials for the `topicmodels` library in R). 
+
+If you plan to use topic models for your last homework, here are some ideas to further extend this code: re-run the model with different number of topics, use methods for finding an optimal values for `k` (coherence score is the most popular method), retrieve top documents by topic (and read them!), retrieve all beta and gamma probabilities, perform extensive data pre-processing to optimize topic models results, fit model with tf-idf rather than with simple counts (which is default), etc.
